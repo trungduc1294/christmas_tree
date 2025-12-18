@@ -86,40 +86,50 @@
         // ==========================================
         // 1. RESOURCES CONFIG Vandiep
         // ==========================================
+        // Khởi tạo nhạc nền và cấu hình loop
         const MUSIC_URL = "./audio.mp3";
         let bgMusic = new Audio(MUSIC_URL);
         bgMusic.loop = true; bgMusic.volume = 1.0;
 
+        // Load các texture ảnh để hiển thị trong 3D scene
         const loader = new THREE.TextureLoader();
-        const photoFiles = ['./image1.jpeg', './image2.jpeg', './image3.jpeg', './image4.jpeg', './image5.jpeg'];
+        // Tạo mảng 10 ảnh (image1.jpeg đến image10.jpeg)
+        const photoFiles = [];
+        for(let i = 1; i <= 10; i++) {
+            photoFiles.push(`./image${i}.jpeg`);
+        }
         const photoTextures = [];
         photoFiles.forEach((f, i) => photoTextures[i] = loader.load(f));
 
+        // Tạo texture tùy chỉnh cho các hạt particle (vàng, đỏ, quà)
         function createCustomTexture(type) {
             const canvas = document.createElement('canvas');
             canvas.width = 128; canvas.height = 128;
             const ctx = canvas.getContext('2d');
-            const cx = 64, cy = 64;
+            const cx = 64, cy = 64; // Tâm của texture
 
             if (type === 'gold_glow') {
+                // Tạo texture vàng phát sáng với gradient radial
                 const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, 40);
-                grd.addColorStop(0, '#FFFFFF'); 
-                grd.addColorStop(0.2, '#FFFFE0'); 
-                grd.addColorStop(0.5, '#FFD700');
-                grd.addColorStop(1, 'rgba(0,0,0,0)');
+                grd.addColorStop(0, '#FFFFFF'); // Trắng ở giữa
+                grd.addColorStop(0.2, '#FFFFE0'); // Vàng nhạt
+                grd.addColorStop(0.5, '#FFD700'); // Vàng đậm
+                grd.addColorStop(1, 'rgba(0,0,0,0)'); // Trong suốt ở ngoài
                 ctx.fillStyle = grd; ctx.fillRect(0,0,128,128);
 
             } else if (type === 'red_light') {
+                // Tạo texture đỏ phát sáng
                 const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, 50);
-                grd.addColorStop(0, '#FFAAAA'); 
-                grd.addColorStop(0.3, '#FF0000'); 
-                grd.addColorStop(1, 'rgba(0,0,0,0)');
+                grd.addColorStop(0, '#FFAAAA'); // Đỏ nhạt ở giữa
+                grd.addColorStop(0.3, '#FF0000'); // Đỏ đậm
+                grd.addColorStop(1, 'rgba(0,0,0,0)'); // Trong suốt ở ngoài
                 ctx.fillStyle = grd; ctx.fillRect(0,0,128,128);
 
             } else if (type === 'gift_red') {
-                ctx.fillStyle = '#D32F2F'; ctx.fillRect(20, 20, 88, 88);
-                ctx.fillStyle = '#FFD700'; ctx.fillRect(54, 20, 20, 88); ctx.fillRect(20, 54, 88, 20);
-                ctx.strokeStyle = "rgba(0,0,0,0.3)"; ctx.lineWidth=2; ctx.strokeRect(20,20,88,88);
+                // Tạo texture hộp quà màu đỏ với dây vàng
+                ctx.fillStyle = '#D32F2F'; ctx.fillRect(20, 20, 88, 88); // Thân hộp đỏ
+                ctx.fillStyle = '#FFD700'; ctx.fillRect(54, 20, 20, 88); ctx.fillRect(20, 54, 88, 20); // Dây vàng
+                ctx.strokeStyle = "rgba(0,0,0,0.3)"; ctx.lineWidth=2; ctx.strokeRect(20,20,88,88); // Viền
             }
             return new THREE.CanvasTexture(canvas);
         }
@@ -133,111 +143,132 @@
         // ==========================================
         // 2. SYSTEM CONFIG Vandiep
         // ==========================================
+        // Cấu hình số lượng hạt và kích thước các hiệu ứng
         const CONFIG = {
-            goldCount: 2000,
-            redCount: 300,
-            giftCount: 150,
-            explodeRadius: 65,  
-            photoOrbitRadius: 25,
-            treeHeight: 70,
-            treeBaseRadius: 35
+            goldCount: 2000,        // Số lượng hạt vàng
+            redCount: 300,          // Số lượng hạt đỏ
+            giftCount: 150,         // Số lượng hạt quà
+            explodeRadius: 65,      // Bán kính khi nổ (explode)
+            photoOrbitRadius: 25,   // Bán kính quỹ đạo của ảnh
+            treeHeight: 70,         // Chiều cao cây thông
+            treeBaseRadius: 35      // Bán kính đáy cây thông
         };
 
+        // Biến global cho Three.js scene
         let scene, camera, renderer;
-        let groupGold, groupRed, groupGift; 
-        let photoMeshes = [];    
-        let titleMesh, starMesh, loveMesh;
+        let groupGold, groupRed, groupGift; // Các nhóm hạt particle
+        let photoMeshes = [];    // Mảng chứa các mesh ảnh
+        let photoInitialPositions = []; // Mảng chứa vị trí ban đầu ngẫu nhiên của các ảnh trong hình cầu
+        let titleMesh, starMesh, loveMesh; // Các decoration mesh
         
+        // Trạng thái hiện tại của hệ thống: TREE, HEART, EXPLODE, PHOTO
         let state = 'TREE'; 
-        let selectedIndex = 0;
-        let handX = 0.5;
+        let selectedIndex = 0;   // Index của ảnh được chọn
+        let handX = 0.5;         // Vị trí X của bàn tay (0-1) để điều khiển rotation Y
+        let handY = 0.5;         // Vị trí Y của bàn tay (0-1) để điều khiển rotation X
+        let handZoom = 1.0;      // Zoom level dựa trên khoảng cách tay (0.5-1.5)
 
         // ==========================================
         // 3. THREE.JS SYSTEM Vandiep
         // ==========================================
+        // Khởi tạo hệ thống 3D với Three.js
         function init3D() {
             const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
-            scene.fog = new THREE.FogExp2(0x000000, 0.002);
+            scene.fog = new THREE.FogExp2(0x000000, 0.002); // Thêm sương mù đen
 
+            // Tạo camera perspective với góc nhìn 60 độ
             camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
-            camera.position.z = 100;
+            camera.position.z = 100; // Đặt camera cách xa 100 đơn vị
 
+            // Tạo WebGL renderer với antialiasing
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Giới hạn pixel ratio để tối ưu performance
             container.appendChild(renderer.domElement);
 
+            // Tạo các hệ thống hạt particle với số lượng và kích thước khác nhau
             groupGold = createParticleSystem('gold', CONFIG.goldCount, 2.0);
             groupRed = createParticleSystem('red', CONFIG.redCount, 3.5); 
             groupGift = createParticleSystem('gift', CONFIG.giftCount, 3.0); 
 
+            // Tạo ảnh và các decoration (title, star, love text)
             createPhotos();
             createDecorations();
-            animate();
+            animate(); // Bắt đầu animation loop
         }
 
+        // Tạo hệ thống particle với các vị trí target cho các trạng thái khác nhau
         function createParticleSystem(type, count, size) {
-            const pPositions = [];
-            const pExplodeTargets = [];
-            const pTreeTargets = [];
-            const pHeartTargets = [];
-            const sizes = []; 
-            const phases = []; 
+            const pPositions = [];      // Vị trí hiện tại của các hạt
+            const pExplodeTargets = []; // Vị trí target khi ở trạng thái EXPLODE
+            const pTreeTargets = [];    // Vị trí target khi ở trạng thái TREE
+            const pHeartTargets = [];   // Vị trí target khi ở trạng thái HEART
+            const sizes = [];           // Kích thước của từng hạt
+            const phases = [];          // Phase để tạo hiệu ứng nhấp nháy
             
             for(let i=0; i<count; i++) {
-                // --- TREE Vandiep ---
-                const h = Math.random() * CONFIG.treeHeight; 
-                const y = h - CONFIG.treeHeight / 2;
+                // --- TREE: Tạo hình dạng cây thông (hình nón) ---
+                const h = Math.random() * CONFIG.treeHeight; // Chiều cao ngẫu nhiên
+                const y = h - CONFIG.treeHeight / 2; // Điều chỉnh để căn giữa
+                // Hạt vàng phân bố đều hơn, hạt đỏ/quà tập trung ở ngoài
                 let radiusRatio = (type === 'gold') ? Math.sqrt(Math.random()) : 0.9 + Math.random()*0.1;
+                // Bán kính giảm dần từ đáy lên đỉnh (tạo hình nón)
                 const maxR = (1 - (h / CONFIG.treeHeight)) * CONFIG.treeBaseRadius;
                 const r = maxR * radiusRatio; 
-                const theta = Math.random() * Math.PI * 2;
+                const theta = Math.random() * Math.PI * 2; // Góc ngẫu nhiên
                 pTreeTargets.push(r * Math.cos(theta), y, r * Math.sin(theta));
 
-                // --- EXPLODE Vandiep ---
+                // --- EXPLODE: Phân bố hạt trong hình cầu ---
                 const u = Math.random();
                 const v = Math.random();
-                const phi = Math.acos(2 * v - 1);
-                const lam = 2 * Math.PI * u;
-                let radMult = (type === 'gift') ? 1.2 : 1.0;
+                // Sử dụng spherical coordinates để phân bố đều trong không gian 3D
+                const phi = Math.acos(2 * v - 1); // Góc từ trục Z
+                const lam = 2 * Math.PI * u;      // Góc quanh trục Z
+                let radMult = (type === 'gift') ? 1.2 : 1.0; // Quà nổ xa hơn một chút
+                // Dùng cube root để phân bố đều hơn trong thể tích
                 const rad = CONFIG.explodeRadius * Math.cbrt(Math.random()) * radMult;
                 pExplodeTargets.push(rad * Math.sin(phi) * Math.cos(lam), rad * Math.sin(phi) * Math.sin(lam), rad * Math.cos(phi));
 
-                // --- SOFT HEART Vandiep ---
-                const tHeart = Math.random() * Math.PI * 2;
+                // --- SOFT HEART: Tạo hình trái tim mềm mại ---
+                const tHeart = Math.random() * Math.PI * 2; // Tham số cho phương trình trái tim
+                // Phương trình parametric của trái tim
                 let hx = 16 * Math.pow(Math.sin(tHeart), 3);
                 let hy = 13 * Math.cos(tHeart) - 5 * Math.cos(2*tHeart) - 2 * Math.cos(3*tHeart) - Math.cos(4*tHeart);
                 
-                const rFill = Math.pow(Math.random(), 0.3); // Soft fill Vandiep
+                // Làm mềm và điền đầy bên trong trái tim
+                const rFill = Math.pow(Math.random(), 0.3); // Random nhưng tập trung gần 1
                 hx *= rFill; hy *= rFill;
-                let hz = (Math.random() - 0.5) * 8 * rFill; 
+                let hz = (Math.random() - 0.5) * 8 * rFill; // Độ sâu ngẫu nhiên
                 
+                // Thêm noise để tự nhiên hơn
                 const noise = 1.0;
                 hx += (Math.random() - 0.5) * noise;
                 hy += (Math.random() - 0.5) * noise;
                 hz += (Math.random() - 0.5) * noise;
 
-                const scaleH = 2.2;
-                pHeartTargets.push(hx * scaleH, hy * scaleH + 5, hz); 
+                const scaleH = 2.2; // Scale để trái tim lớn hơn
+                pHeartTargets.push(hx * scaleH, hy * scaleH + 5, hz); // +5 để nâng lên một chút
 
-                // --- INIT Vandiep ---
+                // --- INIT: Khởi tạo vị trí ban đầu (bắt đầu từ hình cây) ---
                 pPositions.push(pTreeTargets[i*3], pTreeTargets[i*3+1], pTreeTargets[i*3+2]);
                 sizes.push(size);
-                phases.push(Math.random() * Math.PI * 2);
+                phases.push(Math.random() * Math.PI * 2); // Phase ngẫu nhiên cho animation
             }
 
+            // Tạo BufferGeometry để lưu trữ dữ liệu của các hạt
             const geo = new THREE.BufferGeometry();
-            geo.setAttribute('position', new THREE.Float32BufferAttribute(pPositions, 3));
-            geo.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(pPositions, 3)); // Vị trí x,y,z
+            geo.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1)); // Kích thước
             
-            // Init colors Vandiep
-            const colors = new Float32Array(count * 3);
+            // Khởi tạo màu sắc cho các hạt dựa trên loại
+            const colors = new Float32Array(count * 3); // RGB cho mỗi hạt
             const baseColor = new THREE.Color();
-            if(type === 'gold') baseColor.setHex(0xFFD700);
-            else if(type === 'red') baseColor.setHex(0xFF0000);
-            else baseColor.setHex(0xFFFFFF);
+            if(type === 'gold') baseColor.setHex(0xFFD700);      // Vàng
+            else if(type === 'red') baseColor.setHex(0xFF0000);  // Đỏ
+            else baseColor.setHex(0xFFFFFF);                      // Trắng (cho gift)
 
+            // Gán màu cho tất cả các hạt
             for(let i=0; i<count; i++) {
                 colors[i*3] = baseColor.r;
                 colors[i*3+1] = baseColor.g;
@@ -245,19 +276,21 @@
             }
             geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
             
+            // Lưu các target positions và metadata vào userData để dùng sau
             geo.userData = { 
                 tree: pTreeTargets, explode: pExplodeTargets, heart: pHeartTargets, 
                 phases: phases, baseColor: baseColor, baseSize: size
             };
 
+            // Tạo material cho các hạt
             const mat = new THREE.PointsMaterial({
                 size: size,
-                map: textures[type],
+                map: textures[type], // Texture tùy chỉnh
                 transparent: true, opacity: 1.0,
-                vertexColors: true, 
-                blending: (type === 'gift') ? THREE.NormalBlending : THREE.AdditiveBlending, 
-                depthWrite: false,
-                sizeAttenuation: true
+                vertexColors: true, // Sử dụng màu từ vertex
+                blending: (type === 'gift') ? THREE.NormalBlending : THREE.AdditiveBlending, // Gift dùng normal, còn lại additive để sáng hơn
+                depthWrite: false, // Không ghi depth để tránh artifact
+                sizeAttenuation: true // Kích thước giảm theo khoảng cách
             });
 
             const points = new THREE.Points(geo, mat);
@@ -265,20 +298,41 @@
             return points;
         }
 
+        // Tạo các mesh ảnh với viền vàng và vị trí ban đầu phân bố đều trên bề mặt hình cầu
         function createPhotos() {
-            const geo = new THREE.PlaneGeometry(8, 8);
-            const borderGeo = new THREE.PlaneGeometry(9, 9); 
-            const borderMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 }); 
+            const geo = new THREE.PlaneGeometry(8, 8); // Geometry cho ảnh
+            const borderGeo = new THREE.PlaneGeometry(9, 9); // Geometry cho viền (lớn hơn 1 đơn vị)
+            const borderMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 }); // Viền vàng
 
-            for(let i=0; i<5; i++) {
+            // Tạo ảnh với vị trí phân bố đều trên bề mặt hình cầu
+            const photoCount = photoFiles.length;
+            const radius = CONFIG.photoOrbitRadius; // Bán kính cố định cho tất cả ảnh
+            
+            // Sử dụng Fibonacci sphere để phân bố đều trên bề mặt hình cầu
+            const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // Golden angle in radians
+            
+            for(let i=0; i<photoCount; i++) {
                 const mat = new THREE.MeshBasicMaterial({ map: photoTextures[i], side: THREE.DoubleSide });
                 const mesh = new THREE.Mesh(geo, mat);
                 const border = new THREE.Mesh(borderGeo, borderMat);
-                border.position.z = -0.1; 
-                mesh.add(border);
-                mesh.visible = false; mesh.scale.set(0,0,0);
+                border.position.z = -0.1; // Đặt viền phía sau một chút
+                mesh.add(border); // Gắn viền vào mesh
+                mesh.visible = false; mesh.scale.set(0,0,0); // Ẩn ban đầu
                 scene.add(mesh);
                 photoMeshes.push(mesh);
+                
+                // Fibonacci sphere algorithm để phân bố đều trên bề mặt hình cầu
+                const y = 1 - (i / (photoCount - 1)) * 2; // y từ 1 đến -1
+                const r = Math.sqrt(1 - y * y); // Bán kính tại y
+                const theta = goldenAngle * i; // Góc xoay quanh trục Y
+                
+                // Chuyển từ spherical coordinates sang Cartesian coordinates
+                const x = Math.cos(theta) * r * radius;
+                const z = Math.sin(theta) * r * radius;
+                const yPos = y * radius;
+                
+                // Lưu vị trí ban đầu (sẽ được xoay theo tay sau này)
+                photoInitialPositions.push(new THREE.Vector3(x, yPos, z));
             }
         }
 
@@ -331,39 +385,45 @@
             scene.add(loveMesh);
         }
 
-        function updateParticleGroup(group, type, targetState, speed, handRotY, time) {
-            const positions = group.geometry.attributes.position.array;
-            const sizes = group.geometry.attributes.size.array;
-            const colors = group.geometry.attributes.color.array;
-            const phases = group.geometry.userData.phases;
-            const baseColor = group.geometry.userData.baseColor;
-            const baseSize = group.geometry.userData.baseSize;
+        // Cập nhật vị trí, màu sắc và kích thước của các hạt dựa trên trạng thái
+        function updateParticleGroup(group, type, targetState, speed, handRotX, handRotY, time) {
+            const positions = group.geometry.attributes.position.array; // Mảng vị trí hiện tại
+            const sizes = group.geometry.attributes.size.array;         // Mảng kích thước
+            const colors = group.geometry.attributes.color.array;        // Mảng màu sắc
+            const phases = group.geometry.userData.phases;               // Phase cho animation
+            const baseColor = group.geometry.userData.baseColor;         // Màu cơ bản
+            const baseSize = group.geometry.userData.baseSize;           // Kích thước cơ bản
             
+            // Xác định target positions dựa trên trạng thái
             const targetKey = (targetState === 'TREE') ? 'tree' : (targetState === 'HEART' ? 'heart' : 'explode');
             const targets = group.geometry.userData[(targetState === 'PHOTO') ? 'explode' : targetKey];
 
-            // 1. Vandiep
+            // 1. Di chuyển các hạt về vị trí target với tốc độ speed (interpolation)
             for(let i=0; i<positions.length; i++) {
-                positions[i] += (targets[i] - positions[i]) * speed;
+                positions[i] += (targets[i] - positions[i]) * speed; // Linear interpolation
             }
             group.geometry.attributes.position.needsUpdate = true;
             
-            // 2. COLOR & SIZE Vandiep
-            const count = positions.length / 3;
+            // 2. Cập nhật màu sắc và kích thước dựa trên trạng thái
+            const count = positions.length / 3; // Số lượng hạt (mỗi hạt có 3 giá trị x,y,z)
             
             if (targetState === 'TREE') {
-                group.rotation.y += 0.003;
+                // Trạng thái cây thông: xoay chậm và nhấp nháy
+                // Reset rotation X về 0 để cây không bị nghiêng (smooth transition)
+                group.rotation.x += (0 - group.rotation.x) * 0.1; // Smooth về 0
+                group.rotation.y += 0.003; // Xoay cây từ từ (chỉ xoay ngang)
                 
                 for(let i=0; i<count; i++) {
                     sizes[i] = baseSize;
                     let brightness = 1.0;
                     if(type === 'red') {
-                        // RED
+                        // Hạt đỏ nhấp nháy chậm (tần số 3)
                         brightness = 0.5 + 0.5 * Math.sin(time * 3 + phases[i]);
                     } else if(type === 'gold') {
-                        // YELLOW
+                        // Hạt vàng nhấp nháy nhanh (tần số 10)
                         brightness = 0.8 + 0.4 * Math.sin(time * 10 + phases[i]);
                     }
+                    // Áp dụng brightness vào màu
                     colors[i*3]   = baseColor.r * brightness;
                     colors[i*3+1] = baseColor.g * brightness;
                     colors[i*3+2] = baseColor.b * brightness;
@@ -372,29 +432,35 @@
                 group.geometry.attributes.size.needsUpdate = true;
 
             } else if (targetState === 'HEART') {
-                group.rotation.y = 0;
-                const beatScale = 1 + Math.abs(Math.sin(time * 3)) * 0.15;
+                // Trạng thái trái tim: đập nhịp và chỉ hiển thị 1/3 hạt
+                // Reset cả rotation X và Y về 0 (smooth transition)
+                group.rotation.x += (0 - group.rotation.x) * 0.1; // Smooth về 0
+                group.rotation.y += (0 - group.rotation.y) * 0.1; // Smooth về 0
+                const beatScale = 1 + Math.abs(Math.sin(time * 3)) * 0.15; // Scale đập nhịp
                 group.scale.set(beatScale, beatScale, beatScale);
 
-                // Vandiep
+                // Chỉ hiển thị mỗi hạt thứ 3 để tạo hiệu ứng thưa thớt
                 for(let i=0; i<count; i++) {
                     colors[i*3] = baseColor.r; colors[i*3+1] = baseColor.g; colors[i*3+2] = baseColor.b;
-                    if (i % 3 === 0) sizes[i] = baseSize;
-                    else sizes[i] = 0;
+                    if (i % 3 === 0) sizes[i] = baseSize; // Chỉ hạt thứ 0, 3, 6, 9... hiển thị
+                    else sizes[i] = 0; // Các hạt khác ẩn đi
                 }
                 group.geometry.attributes.color.needsUpdate = true;
                 group.geometry.attributes.size.needsUpdate = true;
 
             } else {
-                // EXPLODE
-                group.scale.set(1,1,1);
-                group.rotation.y += (handRotY - group.rotation.y) * 0.1;
+                // Trạng thái EXPLODE: xoay đa hướng 3D theo tay và nhấp nháy nhanh
+                group.scale.set(1,1,1); // Reset scale
+                // Xoay theo cả trục X và Y dựa trên vị trí tay (spherical rotation)
+                group.rotation.x += (handRotX - group.rotation.x) * 0.1; // Xoay theo trục X (smooth)
+                group.rotation.y += (handRotY - group.rotation.y) * 0.1; // Xoay theo trục Y (smooth)
 
-                // size, color
+                // Cập nhật size và color với hiệu ứng nhấp nháy
                 for(let i=0; i<count; i++) {
                     sizes[i] = baseSize;
                     let brightness = 1.0;
                     if(type === 'gold' || type === 'red') {
+                        // Nhấp nháy rất nhanh (tần số 12)
                         brightness = 0.8 + 0.5 * Math.sin(time * 12 + phases[i]);
                     }
                     colors[i*3]   = baseColor.r * brightness;
@@ -406,126 +472,225 @@
             }
         }
 
+        // Animation loop chính - chạy mỗi frame
         function animate() {
-            requestAnimationFrame(animate);
-            const time = Date.now() * 0.001;
-            const speed = 0.08;
-            const handRotY = (handX - 0.5) * 4.0;
+            requestAnimationFrame(animate); // Lặp lại animation
+            const time = Date.now() * 0.001; // Thời gian tính bằng giây
+            const speed = 0.08; // Tốc độ di chuyển của hạt (interpolation speed)
+            
+            // Chuyển vị trí tay thành góc xoay 3D (spherical coordinates)
+            // handX (0-1) -> rotation Y: -2π đến 2π (xoay ngang, cho phép 2 vòng để xem hết ảnh)
+            const handRotY = (handX - 0.5) * Math.PI * 4; 
+            // handY (0-1) -> rotation X: -π/2 đến π/2 (xoay dọc, giới hạn để tránh lộn ngược)
+            const handRotX = (handY - 0.5) * Math.PI;
 
-            updateParticleGroup(groupGold, 'gold', state, speed, handRotY, time);
-            updateParticleGroup(groupRed, 'red', state, speed, handRotY, time);
-            updateParticleGroup(groupGift, 'gift', state, speed, handRotY, time);
+            // Cập nhật tất cả các nhóm hạt với rotation 3D
+            updateParticleGroup(groupGold, 'gold', state, speed, handRotX, handRotY, time);
+            updateParticleGroup(groupRed, 'red', state, speed, handRotX, handRotY, time);
+            updateParticleGroup(groupGift, 'gift', state, speed, handRotX, handRotY, time);
 
+            // Đảm bảo texture đã load cho các ảnh
             photoMeshes.forEach((mesh, i) => {
                 if(!mesh.material.map && photoTextures[i]) {
                     mesh.material.map = photoTextures[i]; mesh.material.needsUpdate = true;
                 }
             });
 
+            // Xử lý UI và animation dựa trên trạng thái hiện tại
             if (state === 'TREE') {
+                // Hiển thị title và ngôi sao, ẩn love text và ảnh
                 titleMesh.visible = true; starMesh.visible = true; loveMesh.visible = false;
-                titleMesh.scale.lerp(new THREE.Vector3(1,1,1), 0.1);
-                starMesh.rotation.z -= 0.02; 
-                starMesh.material.opacity = 0.7 + 0.3*Math.sin(time*5);
+                titleMesh.scale.lerp(new THREE.Vector3(1,1,1), 0.1); // Scale về kích thước bình thường
+                starMesh.rotation.z -= 0.02; // Xoay ngôi sao
+                starMesh.material.opacity = 0.7 + 0.3*Math.sin(time*5); // Nhấp nháy opacity
                 photoMeshes.forEach(m => { m.scale.lerp(new THREE.Vector3(0,0,0), 0.1); m.visible = false; });
+                // Reset camera về vị trí mặc định khi không ở EXPLODE
+                const baseCameraZ = 100;
+                camera.position.z += (baseCameraZ - camera.position.z) * 0.1;
 
             } else if (state === 'HEART') {
+                // Hiển thị love text, ẩn title và star
                 titleMesh.visible = false; starMesh.visible = false; loveMesh.visible = true;
                 photoMeshes.forEach(m => { m.visible = false; });
-                const s = 1 + Math.abs(Math.sin(time*3))*0.1;
+                const s = 1 + Math.abs(Math.sin(time*3))*0.1; // Scale đập nhịp
                 loveMesh.scale.set(s,s,1);
+                // Reset camera về vị trí mặc định khi không ở EXPLODE
+                const baseCameraZ = 100;
+                camera.position.z += (baseCameraZ - camera.position.z) * 0.1;
 
             } else if (state === 'EXPLODE') {
+                // Hiển thị ảnh phân bố trong hình cầu và xoay đa hướng theo tay
                 titleMesh.visible = false; starMesh.visible = false; loveMesh.visible = false;
-                const baseAngle = groupGold.rotation.y; 
-                const angleStep = (Math.PI * 2) / 5;
-                let bestIdx = 0; let maxZ = -999;
+                
+                // Tính rotation từ vị trí tay (tăng phạm vi để xoay 2 vòng)
+                const handRotY = (handX - 0.5) * Math.PI * 4; // Rotation Y (xoay ngang, cho phép 2 vòng)
+                const handRotX = (handY - 0.5) * Math.PI; // Rotation X (xoay dọc)
+                
+                // Áp dụng zoom cho camera dựa trên khoảng cách tay
+                const baseCameraZ = 100; // Vị trí camera mặc định
+                const targetZ = baseCameraZ / handZoom; // Zoom in khi handZoom > 1, zoom out khi < 1
+                camera.position.z += (targetZ - camera.position.z) * 0.1; // Smooth zoom
+                
+                // Tạo rotation matrix để xoay các vị trí ban đầu
+                const rotationMatrix = new THREE.Matrix4();
+                rotationMatrix.makeRotationX(handRotX); // Xoay theo trục X trước
+                rotationMatrix.multiply(new THREE.Matrix4().makeRotationY(handRotY)); // Sau đó xoay theo trục Y
+                
+                let bestIdx = 0; let maxZ = -999; // Tìm ảnh gần camera nhất (z lớn nhất)
+                
                 photoMeshes.forEach((mesh, i) => {
                     mesh.visible = true;
-                    const angle = baseAngle + i * angleStep;
-                    const x = Math.sin(angle) * CONFIG.photoOrbitRadius;
-                    const z = Math.cos(angle) * CONFIG.photoOrbitRadius;
-                    const y = Math.sin(time + i) * 3; 
-                    mesh.position.lerp(new THREE.Vector3(x, y, z), 0.1);
-                    mesh.lookAt(camera.position);
-                    if (z > maxZ) { maxZ = z; bestIdx = i; }
-                    if (z > 5) { 
-                        const ds = 1.0 + (z/CONFIG.photoOrbitRadius)*0.8; 
+                    
+                    // Lấy vị trí ban đầu và áp dụng rotation
+                    const initialPos = photoInitialPositions[i].clone();
+                    initialPos.applyMatrix4(rotationMatrix); // Xoay vị trí theo rotation matrix
+                    
+                    // Thêm một chút animation nhẹ (di chuyển lên xuống)
+                    const animY = Math.sin(time * 0.5 + i) * 2; // Animation nhẹ
+                    const finalPos = new THREE.Vector3(initialPos.x, initialPos.y + animY, initialPos.z);
+                    
+                    mesh.position.lerp(finalPos, 0.1); // Smooth movement
+                    mesh.lookAt(camera.position); // Luôn hướng về camera
+                    
+                    // Tìm ảnh gần nhất (z lớn nhất)
+                    if (finalPos.z > maxZ) { maxZ = finalPos.z; bestIdx = i; }
+                    
+                    // Scale lớn hơn khi ở phía trước (z > 5)
+                    if (finalPos.z > 5) { 
+                        const ds = 1.0 + (finalPos.z/CONFIG.photoOrbitRadius)*0.8; 
                         mesh.scale.lerp(new THREE.Vector3(ds, ds, ds), 0.1);
                     } else {
                         mesh.scale.lerp(new THREE.Vector3(0.6, 0.6, 0.6), 0.1);
                     }
                 });
-                selectedIndex = bestIdx;
+                selectedIndex = bestIdx; // Lưu index của ảnh được chọn
 
             } else if (state === 'PHOTO') {
+                // Hiển thị ảnh được chọn ở giữa màn hình, phóng to
                 loveMesh.visible = false;
                 photoMeshes.forEach((mesh, i) => {
                     if (i === selectedIndex) {
+                        // Di chuyển ảnh được chọn ra giữa và phóng to
                         mesh.position.lerp(new THREE.Vector3(0, 0, 60), 0.1);
                         mesh.scale.lerp(new THREE.Vector3(5, 5, 5), 0.1);
-                        mesh.lookAt(camera.position); mesh.rotation.z = 0;
+                        mesh.lookAt(camera.position); mesh.rotation.z = 0; // Hướng về camera
                     } else {
+                        // Ẩn các ảnh khác
                         mesh.scale.lerp(new THREE.Vector3(0,0,0), 0.1);
                     }
                 });
             }
-            renderer.render(scene, camera);
+            renderer.render(scene, camera); // Render frame
         }
 
+        // Hàm khởi động hệ thống: bắt đầu camera và nhận diện cử chỉ tay
         function startSystem() {
-            document.getElementById('btnStart').style.display = 'none';
-            bgMusic.play().catch(e => console.log(e));
-            init3D();
+            document.getElementById('btnStart').style.display = 'none'; // Ẩn nút Start
+            bgMusic.play().catch(e => console.log(e)); // Phát nhạc nền
+            init3D(); // Khởi tạo scene 3D
 
+            // Lấy video element và canvas để hiển thị preview camera
             const video = document.getElementsByClassName('input_video')[0];
             const canvas = document.getElementById('camera-preview');
             const ctx = canvas.getContext('2d');
             
+            // Khởi tạo MediaPipe Hands để nhận diện cử chỉ tay
             const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            // Cấu hình: tối đa 2 tay, độ phức tạp trung bình, ngưỡng confidence 0.5
             hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
 
+            // Callback xử lý kết quả nhận diện từ MediaPipe
             hands.onResults(results => {
+                // Vẽ preview camera lên canvas (kích thước nhỏ 100x75)
                 ctx.clearRect(0,0,100,75); ctx.drawImage(results.image, 0, 0, 100, 75);
 
-                // --- Hand Logic  ---
+                // --- LOGIC NHẬN DIỆN CỬ CHỈ TAY ---
+                
+                // Kiểm tra cử chỉ HEART: 2 tay chạm nhau
                 if (results.multiHandLandmarks.length === 2) {
-                    const h1 = results.multiHandLandmarks[0]; const h2 = results.multiHandLandmarks[1];
+                    const h1 = results.multiHandLandmarks[0]; // Bàn tay thứ nhất
+                    const h2 = results.multiHandLandmarks[1]; // Bàn tay thứ hai
+                    // Tính khoảng cách giữa 2 ngón trỏ (landmark 8)
                     const distIndex = Math.hypot(h1[8].x - h2[8].x, h1[8].y - h2[8].y);
+                    // Tính khoảng cách giữa 2 ngón cái (landmark 4)
                     const distThumb = Math.hypot(h1[4].x - h2[4].x, h1[4].y - h2[4].y);
+                    // Nếu cả 2 khoảng cách đều nhỏ (< 0.15) => cử chỉ HEART
                     if (distIndex < 0.15 && distThumb < 0.15) {
                         state = 'HEART'; return;
                     }
                 }
 
+                // Xử lý cử chỉ với 1 tay
                 if(results.multiHandLandmarks.length > 0) {
-                    const lm = results.multiHandLandmarks[0];
-                    handX = lm[9].x; 
-                    const tips = [8,12,16,20]; const wrist = lm[0];
-                    let openDist = 0; tips.forEach(i => openDist += Math.hypot(lm[i].x-wrist.x, lm[i].y-wrist.y));
-                    const avgDist = openDist / 4;
+                    const lm = results.multiHandLandmarks[0]; // Lấy bàn tay đầu tiên
+                    handX = lm[9].x; // Lưu vị trí X của điểm giữa bàn tay (landmark 9) để điều khiển rotation Y
+                    handY = lm[9].y; // Lưu vị trí Y của điểm giữa bàn tay (landmark 9) để điều khiển rotation X
+                    
+                    // Tính zoom dựa trên độ xòe ngón tay (khoảng cách giữa các đầu ngón)
+                    // Sử dụng khoảng cách giữa các đầu ngón để tránh trùng với action nắm tay (TREE)
+                    const tips = [8,12,16,20]; // Index, Middle, Ring, Pinky fingertips
+                    let spreadDist = 0; // Tổng khoảng cách giữa các cặp ngón gần nhau
+                    let pairCount = 0;
+                    
+                    // Tính khoảng cách giữa các cặp ngón liền kề (index-middle, middle-ring, ring-pinky)
+                    for(let i = 0; i < tips.length - 1; i++) {
+                        const dist = Math.hypot(lm[tips[i]].x - lm[tips[i+1]].x, lm[tips[i]].y - lm[tips[i+1]].y);
+                        spreadDist += dist;
+                        pairCount++;
+                    }
+                    
+                    const avgSpread = spreadDist / pairCount; // Độ xòe ngón trung bình
+                    // Chuẩn hóa về khoảng 0.5-1.5 (zoom in khi ngón xòe ra, zoom out khi ngón khép lại)
+                    // Độ xòe thường từ 0.03 (khép) đến 0.12 (xòe rộng), map sang zoom 0.5-1.5
+                    const normalizedSpread = Math.max(0, Math.min(1, (avgSpread - 0.03) / (0.12 - 0.03)));
+                    handZoom = 0.5 + normalizedSpread * 1.0; // Giới hạn từ 0.5 đến 1.5
+                    
+                    // Tính khoảng cách từ cổ tay đến các đầu ngón tay (cho gesture detection)
+                    const wrist = lm[0]; // Cổ tay
+                    let openDist = 0; 
+                    // Tổng khoảng cách từ cổ tay đến 4 đầu ngón
+                    tips.forEach(i => openDist += Math.hypot(lm[i].x-wrist.x, lm[i].y-wrist.y));
+                    const avgDist = openDist / 4; // Khoảng cách trung bình
+                    
+                    // Tính khoảng cách giữa ngón cái và ngón trỏ (pinch gesture)
                     const pinchDist = Math.hypot(lm[4].x-lm[8].x, lm[4].y-lm[8].y);
 
+                    // Phân loại cử chỉ:
                     if (avgDist < 0.25) { 
+                        // Nếu khoảng cách trung bình nhỏ => nắm tay (FIST) => TREE
                         state = 'TREE'; 
                     } else if (pinchDist < 0.05) {
+                        // Nếu ngón cái và trỏ gần nhau => PINCH => PHOTO
                         state = 'PHOTO'; 
                     } else {
+                        // Ngược lại => bàn tay mở (OPEN HAND) => EXPLODE
                         state = 'EXPLODE'; 
                     }
                 } else {
+                    // Không phát hiện tay => mặc định về TREE và reset zoom
                     state = 'TREE'; 
+                    handZoom = 1.0; // Reset zoom về mặc định
                 }
             });
 
+            // Khởi tạo camera với MediaPipe Camera utils
             const cameraUtils = new Camera(video, {
-                onFrame: async () => { await hands.send({image: video}); }, width: 320, height: 240
+                onFrame: async () => { 
+                    // Mỗi frame, gửi hình ảnh video vào MediaPipe Hands để phân tích
+                    await hands.send({image: video}); 
+                }, 
+                width: 320, height: 240 // Độ phân giải camera
             });
-            cameraUtils.start();
+            cameraUtils.start(); // Bắt đầu camera
         }
 
+        // Xử lý sự kiện resize window để điều chỉnh camera và renderer
         window.addEventListener('resize', () => {
-            if(camera) { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+            if(camera) { 
+                camera.aspect = window.innerWidth/window.innerHeight; // Cập nhật tỷ lệ khung hình
+                camera.updateProjectionMatrix(); // Cập nhật ma trận projection
+                renderer.setSize(window.innerWidth, window.innerHeight); // Cập nhật kích thước renderer
+            }
         });
     </script>
 </body>
